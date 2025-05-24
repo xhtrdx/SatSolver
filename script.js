@@ -453,14 +453,17 @@ document.addEventListener('DOMContentLoaded', function () {
                             </tr>
                         `;
 
-                for (const variable in solution) {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
+
+                Object.keys(solution) // Получаем массив переменных
+                    .sort() // Сортируем по алфавиту
+                    .forEach(variable => { // Перебираем отсортированный массив
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
                                 <td>${variable}</td>
                                 <td>${solution[variable] ? 'true' : 'false'}</td>
                             `;
-                    assignmentTable.appendChild(row);
-                }
+                        assignmentTable.appendChild(row);
+                    })
 
                 assignmentContainer.appendChild(assignmentTable);
             } else {
