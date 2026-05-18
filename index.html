@@ -1,77 +1,928 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
-  <script src="script.js"></script>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SAT Solver - Тестирование</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAT Solver V2.0 - Decision Tree Visualization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #fdf2f8; /* pink-50 */
+            color: #4a044e; /* fuchsia-950 */
+            overflow: hidden; 
+        }
+
+        .code-font {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .node circle {
+            stroke-width: 3px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        .node text {
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            fill: #701a75; /* fuchsia-800 */
+            text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+            pointer-events: none;
+        }
+
+        .link {
+            fill: none;
+            stroke-width: 2.5px;
+            opacity: 0.65;
+            transition: all 0.3s ease;
+        }
+
+        /* Цветовая тема приложения */
+        .status-root circle { stroke: #d946ef; fill: #fdf2f8; }
+        .status-branch circle { stroke: #ec4899; fill: #fbcfe8; } 
+        .status-forced circle { stroke: #c084fc; fill: #f3e8ff; }
+        .status-conflict circle { stroke: #f43f5e; fill: #ffe4e6; } 
+        .status-success circle { stroke: #10b981; fill: #d1fae5; } 
+
+        #tooltip {
+            position: absolute;
+            opacity: 0;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #fbcfe8;
+            border-radius: 12px;
+            padding: 14px;
+            pointer-events: none;
+            box-shadow: 0 10px 25px -5px rgba(236, 72, 153, 0.15);
+            transition: opacity 0.2s, transform 0.1s;
+            z-index: 100;
+            max-width: 320px;
+            backdrop-filter: blur(8px);
+            color: #4a044e;
+        }
+
+        /* Скроллбар */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #fbcfe8; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #f472b6; }
+    </style>
 </head>
+<body class="h-screen w-screen flex flex-col md:flex-row bg-pink-50 text-fuchsia-950">
 
-<body>
-  <div class="main-container">
-    <h1>Выполнимость булевых формул (SAT-задача)</h1>
+    <!-- Левая панель -->
+    <aside class="w-full md:w-1/3 lg:w-1/4 bg-white/80 backdrop-blur-sm border-r border-pink-200 flex flex-col h-full z-10 shadow-[4px_0_24px_rgba(236,72,153,0.05)] relative">
+        <div class="p-6 pb-2 border-b border-pink-100">
+            <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-fuchsia-500 mb-2">
+                Решатель
+            </h1>
+            <p class="text-[11px] text-pink-400 mb-4 uppercase tracking-widest font-medium">Решатель выполнимости</p>
+        </div>
 
-    <div class="container">
-      <h2>Ввод булевой формулы</h2>
+        <div class="p-6 flex-grow overflow-y-auto flex flex-col gap-6">
+            <!-- Секция ввода -->
+            <div>
+                <label class="block text-sm font-medium text-pink-800 mb-2">Формула (КНФ):</label>
+                <textarea id="formula" rows="4" 
+                    class="w-full bg-white border border-pink-200 rounded-xl p-3 text-fuchsia-900 code-font text-sm focus:ring-2 focus:ring-pink-400 focus:border-transparent transition-all outline-none resize-y shadow-sm placeholder-pink-300"
+                    placeholder="[ [&quot;a&quot;, &quot;b&quot;], [&quot;!a&quot;] ]&#10;или просто&#10;(a | b) &amp; !a"></textarea>
+                
+                <div class="flex flex-wrap gap-2 mt-3">
+                    <button id="btn-tseitin" class="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1.5 rounded-lg border border-purple-200 transition-colors shadow-sm flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                        В КНФ (Цейтин)
+                    </button>
+                    <button id="btn-dimacs" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors shadow-sm flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        DIMACS
+                    </button>
+                    <input type="file" id="dimacs-upload" accept=".cnf,.txt" class="hidden">
+                </div>
 
-      <div class="help-text">
-        <p>Введите булеву формулу в одном из поддерживающихся форматов:</p>
-        <ul>
-          <li>Текстовый формат: <code>(a | b | !c) & (!a | d) & (c | !d | e)</code></li>
-          <li>JSON формат: <code>[["a", "b", "!c"], ["!a", "d"], ["c", "!d", "e"]]</code></li>
-        </ul>
-        <p><code>!</code> - для отрицания переменных</p>
-        <p><code>|</code> - дизъюнкция</p>
-        <p><code>&</code> - конъюнкция</p>
-      </div>
+                <div id="error-box" class="hidden mt-3 p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-600 text-xs shadow-sm"></div>
+            </div>
 
-      <label for="formula">Булева формула:</label>
-      <textarea id="formula" placeholder="Введите формулу...">(a | b | !c) & (!a | d) & (c | !d | e)</textarea>
+            <!-- Примеры формул -->
+            <div>
+                <p class="text-[10px] font-bold text-pink-400 uppercase tracking-widest mb-3">Примеры формул</p>
+                <div class="flex flex-col gap-2">
+                    <button class="example w-full text-left text-xs bg-white hover:bg-pink-50 border border-pink-200 text-pink-700 px-4 py-2.5 rounded-xl transition-all shadow-sm" data-formula="(a | b) & (!a | c) & (!b | !c)">Пример 1 (Простой)</button>
+                    <button class="example w-full text-left text-xs bg-white hover:bg-pink-50 border border-pink-200 text-pink-700 px-4 py-2.5 rounded-xl transition-all shadow-sm" data-formula="(a | b) & (!a | b) & (a | !b) & (!a | !b)">Пример 2 (Невыполнимая)</button>
+                    <button class="example w-full text-left text-xs bg-white hover:bg-pink-50 border border-pink-200 text-pink-700 px-4 py-2.5 rounded-xl transition-all shadow-sm" data-formula="(a | !b | c) & (!a | d) & (b | !c | f) & (g | !i) & (!d | !f | j) & (e | !g | k) & (!h | l) & (i | !j | n) & (!k | o | !a) & (!l | !n) & (m | !o | b) & (!e | f | !g) & (d | !h | i) & (!j | k) & (a | !m | n) & (o | !c | d) & (!b | e) & (g | !i | j) & (!h | k | !m) & (l | !n | o) & (!a | !d | g) & (b | c | !h) & (!e | i) & (f | j | !l) & (!m | n | !o) & (a | h | !j) & (!b | !g) & (c | !d | !i) & (e | l | !n) & (!f | !m | o) & (d | j | !k) & (!a | e | !o) & (b | !f) & (!c | g | !m) & (h | !n | a) & (!i | j | c) & (k | !l) & (!m | o | g) & (n | !a | i) & (!b | d | k)">Пример 3 (Сложная)</button>
+                    <button class="example w-full text-left text-xs bg-white hover:bg-pink-50 border border-pink-200 text-pink-700 px-4 py-2.5 rounded-xl transition-all shadow-sm" data-formula="(A -> B) <=> C">Пример 4 (Классическая формула)</button>
+                </div>
+            </div>
 
-      <h3>Примеры формул:</h3>
-      <div class="examples-grid" id="examples">
-        <div class="example" data-formula="(a | b | !c) & (!a | d) & (c | !d | e)">Пример 1</div>
-        <div class="example" data-formula="(a | b) & (!a | b) & (a | !b) & (!a | !b)">Невыполнимая</div>
-        <div class="example" data-formula="(a) & (a | b) & (!a | c) & (b | !c)">С единичным литералом</div>
-        <div class="example" data-formula="(a | b | c) & (a | b | !d) & (a | !b | c) & (!a | b | !c)">Сложная формула</div>
-        <div class="example" data-formula='[["a", "b"], ["a", "!b"], ["!a", "b"]]'>JSON формат</div>
-      </div>
+            <button id="solve" class="w-full bg-gradient-to-r from-pink-400 to-rose-400 hover:from-pink-500 hover:to-rose-500 text-white font-semibold py-3.5 px-4 rounded-xl shadow-[0_4px_14px_rgba(236,72,153,0.25)] hover:shadow-[0_6px_20px_rgba(236,72,153,0.3)] transition-all flex justify-center items-center gap-2 transform active:scale-95">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l8 8-8 8-8-8 8-8z"/></svg>
+                Решить
+            </button>
 
-      <button id="solve">Решить SAT</button>
-    </div>
+            <!-- Плеер алгоритма -->
+            <div id="player-controls" class="hidden flex flex-col gap-3 bg-white p-4 rounded-xl border border-pink-200 shadow-sm mt-1">
+                <div class="flex justify-between items-center">
+                    <span class="text-[10px] font-bold text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+                        Плеер шагов
+                    </span>
+                    <span id="step-counter-text" class="text-xs font-bold text-fuchsia-900 code-font">0 / 0</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-prev" class="p-1.5 text-pink-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg></button>
+                    <button id="btn-play" class="p-2.5 bg-pink-100 text-pink-600 hover:bg-pink-200 hover:scale-105 rounded-full transition flex-shrink-0 shadow-sm"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg></button>
+                    <button id="btn-next" class="p-1.5 text-pink-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg></button>
+                    <input type="range" id="player-slider" class="w-full h-2 bg-pink-100 rounded-lg appearance-none cursor-pointer accent-pink-500 ml-2" min="0" max="100" value="0">
+                </div>
+            </div>
 
-    <div class="container" id="results-container" style="display: none;">
-      <h2>Результаты</h2>
+            <!-- Подсказка -->
+            <div id="stats-dashboard" class="hidden opacity-0 transition-opacity duration-500 flex-col gap-4 pb-4">
+                <h2 class="text-[10px] font-bold text-pink-400 uppercase tracking-widest border-b border-pink-100 pb-2">Итоги</h2>
+                
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-white rounded-xl p-3 border border-pink-100 flex flex-col justify-between shadow-sm">
+                        <div class="text-[9px] text-pink-400 mb-1 uppercase tracking-wider">Вердикт</div>
+                        <div id="stat-result" class="text-sm font-bold truncate text-fuchsia-900">-</div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl p-3 border border-pink-100 flex flex-col justify-between shadow-sm">
+                        <div class="text-[9px] text-pink-400 mb-1 uppercase tracking-wider">Узлы дерева</div>
+                        <div id="stat-nodes" class="text-sm font-bold code-font text-pink-600">-</div>
+                    </div>
+                </div>
 
-      <div id="results">
-        <div id="solution-result"></div>
-        <div id="verification-result"></div>
+                <div class="bg-white rounded-xl p-3 border border-pink-100 shadow-sm mt-1">
+                    <div class="text-[10px] text-pink-500 mb-2 font-medium uppercase tracking-wider">Финальное присваивание:</div>
+                    <div id="final-assignment" class="bg-pink-50/50 p-3 rounded-lg border border-pink-100 overflow-x-auto scrollbar-thin">
+                        -
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
 
-        <h3>Присваивание переменных:</h3>
-        <div id="assignment-container"></div>
-        <h3>Детали решения:</h3>
-        <div id="steps-container"></div>
-      </div>
-    </div>
-  </div>
+    <!-- Основная область для D3 -->
+    <main class="w-full md:w-2/3 lg:w-3/4 bg-pink-50/30 relative overflow-hidden flex flex-col bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-white to-pink-50/50">
+        
+        <!-- Легенда -->
+        <div class="absolute top-4 right-4 bg-white/90 backdrop-blur-md border border-pink-200 rounded-2xl p-3.5 z-10 flex flex-wrap gap-4 text-xs shadow-lg shadow-pink-100 text-fuchsia-900">
+            <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-white border-2 border-fuchsia-400"></div> Начало</div>
+            <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-pink-200 border-2 border-pink-400"></div> Ветвление</div>
+            <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-purple-100 border-2 border-purple-400"></div> Форсировано</div>
+            <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-rose-100 border-2 border-rose-500"></div> Тупик</div>
+            <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-emerald-100 border-2 border-emerald-500"></div> Решение</div>
+        </div>
 
-  <script>
-    // Добавляем обработчики для примеров
-    document.addEventListener('DOMContentLoaded', function() {
-      const examples = document.querySelectorAll('.example');
-      const formulaTextarea = document.getElementById('formula');
-      
-      examples.forEach(example => {
-        example.addEventListener('click', function() {
-          const formula = this.getAttribute('data-formula');
-          formulaTextarea.value = formula;
-          formulaTextarea.focus();
+        <!-- Управление зумом -->
+        <div class="absolute bottom-6 right-6 bg-white/90 backdrop-blur-md border border-pink-200 rounded-2xl z-10 flex shadow-lg shadow-pink-100 overflow-hidden">
+            <button id="zoom-in" class="p-3 hover:bg-pink-50 text-pink-600 border-r border-pink-200 transition" title="Zoom In"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg></button>
+            <button id="zoom-reset" class="p-3 hover:bg-pink-50 text-pink-600 border-r border-pink-200 transition" title="Reset View"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></button>
+            <button id="zoom-out" class="p-3 hover:bg-pink-50 text-pink-600 transition" title="Zoom Out"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg></button>
+        </div>
+
+        <div id="tree-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+    </main>
+
+    <!-- Подсказка -->
+    <div id="tooltip"></div>
+
+    <script>
+        class LogicConverter {
+            static parseDimacs(text) {
+                const lines = text.split('\n');
+                const formula = [];
+                for (let line of lines) {
+                    line = line.trim();
+                    if (!line || line.startsWith('c') || line.startsWith('p') || line.startsWith('%') || line === '0') continue;
+                    const parts = line.split(/\s+/);
+                    const clause = [];
+                    for (const p of parts) {
+                        const val = parseInt(p, 10);
+                        if (isNaN(val)) continue;
+                        if (val === 0) break;
+                        clause.push(val > 0 ? `v${val}` : `!v${Math.abs(val)}`);
+                    }
+                    if (clause.length > 0) formula.push(clause);
+                }
+                return formula;
+            }
+
+            static convertToCNF(expression) {
+                const tokens = expression.match(/<=>|->|[&|!()]|[a-zA-Z_]\w*/g);
+                if (!tokens) throw new Error("Пустое или неверное выражение");
+                
+                const precedence = { '<=>': 1, '->': 2, '|': 3, '&': 4, '!': 5 };
+                const isOp = t => precedence[t] !== undefined;
+                const output = [];
+                const ops = [];
+                
+                for (const t of tokens) {
+                    if (/[a-zA-Z_]\w*/.test(t)) {
+                        output.push({ type: 'var', name: t });
+                    } else if (t === '(') {
+                        ops.push(t);
+                    } else if (t === ')') {
+                        while (ops.length > 0 && ops[ops.length - 1] !== '(') {
+                            output.push({ type: 'op', val: ops.pop() });
+                        }
+                        ops.pop();
+                    } else if (isOp(t)) {
+                        while (ops.length > 0 && ops[ops.length - 1] !== '(' && precedence[ops[ops.length - 1]] >= precedence[t]) {
+                            output.push({ type: 'op', val: ops.pop() });
+                        }
+                        ops.push(t);
+                    }
+                }
+                while (ops.length > 0) output.push({ type: 'op', val: ops.pop() });
+                
+                const stack = [];
+                for (const t of output) {
+                    if (t.type === 'var') stack.push(t);
+                    else {
+                        if (t.val === '!') {
+                            const a = stack.pop();
+                            stack.push({ op: t.val, args: [a] });
+                        } else {
+                            const b = stack.pop();
+                            const a = stack.pop();
+                            stack.push({ op: t.val, args: [a, b] });
+                        }
+                    }
+                }
+                
+                const ast = stack[0];
+                if (!ast) throw new Error("Синтаксическая ошибка");
+                
+                let varCounter = 1;
+                const cnf = [];
+                
+                function process(node) {
+                    if (node.type === 'var') return node.name;
+                    const tVar = `T${varCounter++}`;
+                    if (node.op === '!') {
+                        const a = process(node.args[0]);
+                        cnf.push([tVar, a]); cnf.push([`!${tVar}`, `!${a}`]);
+                    } else if (node.op === '&') {
+                        const a = process(node.args[0]); const b = process(node.args[1]);
+                        cnf.push([`!${tVar}`, a]); cnf.push([`!${tVar}`, b]); cnf.push([tVar, `!${a}`, `!${b}`]);
+                    } else if (node.op === '|') {
+                        const a = process(node.args[0]); const b = process(node.args[1]);
+                        cnf.push([tVar, `!${a}`]); cnf.push([tVar, `!${b}`]); cnf.push([`!${tVar}`, a, b]);
+                    } else if (node.op === '->') {
+                        const a = process(node.args[0]); const b = process(node.args[1]);
+                        cnf.push([tVar, a]); cnf.push([tVar, `!${b}`]); cnf.push([`!${tVar}`, `!${a}`, b]);
+                    } else if (node.op === '<=>') {
+                        const a = process(node.args[0]); const b = process(node.args[1]);
+                        cnf.push([tVar, a, b]); cnf.push([tVar, `!${a}`, `!${b}`]); cnf.push([`!${tVar}`, `!${a}`, b]); cnf.push([`!${tVar}`, a, `!${b}`]);
+                    }
+                    return tVar;
+                }
+                
+                const rootVar = process(ast);
+                cnf.push([rootVar]);
+                return cnf;
+            }
+        }
+
+        class SATSolver {
+            constructor() {
+                this.tree = null;
+                this.nodeCounter = 0;
+                this.stepCounter = 0;
+            }
+
+            // Замена переменной в формуле
+            substitute(formula, variable, value) {
+                const result = [];
+                for (const clause of formula) {
+                    let satisfied = false;
+                    const newClause = [];
+                    for (const literal of clause) {
+                        const litVar = literal.startsWith('!') ? literal.slice(1) : literal;
+                        const isNeg = literal.startsWith('!');
+                        if (litVar === variable) {
+                            if (isNeg ? !value : value) {
+                                satisfied = true;
+                                break;
+                            } else {
+                                continue;
+                            }
+                        }
+                        newClause.push(literal);
+                    }
+                    if (!satisfied) result.push(newClause);
+                }
+                return result;
+            }
+
+            // Выбор переменной для ветвления (наиболее частая)
+            selectVariable(formula) {
+                const freq = {};
+                for (const clause of formula) {
+                    for (const lit of clause) {
+                        const varName = lit.startsWith('!') ? lit.slice(1) : lit;
+                        freq[varName] = (freq[varName] || 0) + 1;
+                    }
+                }
+                let bestVar = null, bestCount = -1;
+                for (const [variable, count] of Object.entries(freq)) {
+                    if (!bestVar || count > bestCount) {
+                        bestVar = variable;
+                        bestCount = count;
+                    }
+                }
+                return bestVar;
+            }
+
+            // Парсер
+            parseFormula(input) {
+                try {
+                    let formula = JSON.parse(input);
+                    if (Array.isArray(formula) && formula.every(c => Array.isArray(c))) return formula;
+                } catch(e) {}
+
+                return input.split('&').map(clause => 
+                    clause.replace(/[()\[\]"']/g, '').trim().split('|').map(lit => lit.trim())
+                ).filter(clause => clause.length > 0 && clause[0] !== "");
+            }
+
+            formulaToString(formula) {
+                if (!formula) return "";
+                if (formula.length === 0) return "[] (Истина)";
+                return formula.map(c => '(' + c.join(' | ') + ')').join(' & ');
+            }
+
+            getTree() {
+                return this.tree;
+            }
+
+            getStats() {
+                return { nodes: this.nodeCounter, maxSteps: Math.max(0, this.stepCounter - 1) };
+            }
+
+            solve(formula, assignment = {}) {
+                this.nodeCounter = 0;
+                this.stepCounter = 0;
+                
+                const rootNode = {
+                    id: `node-${this.nodeCounter++}`,
+                    stepIndex: this.stepCounter++,
+                    name: "Начало",
+                    type: "root",
+                    status: "root",
+                    assignment: { ...assignment },
+                    children: [],
+                    stepData: { formula: JSON.parse(JSON.stringify(formula)) }
+                };
+                
+                this.tree = rootNode;
+                
+                const result = this.dpll(formula, assignment, rootNode);
+                
+                if (result !== null) {
+                    if (rootNode.status !== 'success' && rootNode.children.length === 0) rootNode.status = 'success';
+                } else {
+                    if (rootNode.status !== 'conflict' && rootNode.children.length === 0) rootNode.status = 'conflict';
+                }
+                
+                return result;
+            }
+
+            // Рекурсивный алгоритм DPLL
+            dpll(formula, assignment, parentNode) {
+                if (formula.length === 0) {
+                    parentNode.status = 'success';
+                    return assignment;
+                }
+                
+                if (formula.some(clause => clause.length === 0)) {
+                    parentNode.status = 'conflict';
+                    return null;
+                }
+
+                let currentFormula = formula;
+                let currentAssignment = assignment;
+                let currentNode = parentNode;
+
+                // 1. Правило единичного литерала (Unit Propagation)
+                let foundUnit = true;
+                while (foundUnit) {
+                    foundUnit = false;
+                    for (let clause of currentFormula) {
+                        if (clause.length === 1) {
+                            foundUnit = true;
+                            const literal = clause[0];
+                            const variable = literal.startsWith('!') ? literal.substring(1) : literal;
+                            const value = !literal.startsWith('!');
+
+                            currentAssignment = { ...currentAssignment, [variable]: value };
+                            currentFormula = this.substitute(currentFormula, variable, value);
+
+                            const unitNode = {
+                                id: `node-${this.nodeCounter++}`,
+                                stepIndex: this.stepCounter++,
+                                name: `${variable} = ${value ? 'T' : 'F'}`,
+                                type: 'unit',
+                                status: 'forced',
+                                assignment: { ...currentAssignment },
+                                children: [],
+                                stepData: { formula: currentFormula }
+                            };
+                            currentNode.children.push(unitNode);
+                            currentNode = unitNode;
+
+                            if (currentFormula.some(c => c.length === 0)) {
+                                currentNode.status = 'conflict';
+                                return null;
+                            }
+                            break; 
+                        }
+                    }
+                }
+
+                // 2. Правило чистого литерала (Pure Literal Elimination)
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    const countPos = {}, countNeg = {};
+                    for (const clause of currentFormula) {
+                        for (const lit of clause) {
+                            const varName = lit.startsWith('!') ? lit.slice(1) : lit;
+                            if (lit.startsWith('!')) countNeg[varName] = (countNeg[varName] || 0) + 1;
+                            else countPos[varName] = (countPos[varName] || 0) + 1;
+                        }
+                    }
+                    for (const variable of Object.keys({ ...countPos, ...countNeg })) {
+                        if (currentAssignment.hasOwnProperty(variable)) continue;
+                        const hasPos = !!countPos[variable];
+                        const hasNeg = !!countNeg[variable];
+                        if (hasPos ^ hasNeg) {
+                            const value = hasPos;
+                            currentAssignment = { ...currentAssignment, [variable]: value };
+                            currentFormula = this.substitute(currentFormula, variable, value);
+                            
+                            const pureNode = {
+                                id: `node-${this.nodeCounter++}`,
+                                stepIndex: this.stepCounter++,
+                                name: `${variable} = ${value ? 'T' : 'F'}`,
+                                type: 'pure',
+                                status: 'forced',
+                                assignment: { ...currentAssignment },
+                                children: [],
+                                stepData: { formula: currentFormula }
+                            };
+                            currentNode.children.push(pureNode);
+                            currentNode = pureNode;
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 3. Выбор переменной для ветвления
+                const variable = this.selectVariable(currentFormula);
+                if (!variable) {
+                    if (currentFormula.length > 0) {
+                        currentNode.status = 'conflict';
+                        return null;
+                    }
+                    currentNode.status = 'success';
+                    return currentAssignment;
+                }
+
+                // Ветвь: TRUE
+                const trueNode = {
+                    id: `node-${this.nodeCounter++}`,
+                    stepIndex: this.stepCounter++,
+                    name: `${variable} = T`,
+                    type: 'branch',
+                    status: 'branch',
+                    value: true,
+                    assignment: { ...currentAssignment, [variable]: true },
+                    children: [],
+                    stepData: { formula: this.substitute(currentFormula, variable, true) }
+                };
+                currentNode.children.push(trueNode);
+                
+                const resTrue = this.dpll(trueNode.stepData.formula, trueNode.assignment, trueNode);
+                if (resTrue !== null) {
+                    return resTrue;
+                }
+
+                // Ветвь: FALSE
+                const falseNode = {
+                    id: `node-${this.nodeCounter++}`,
+                    stepIndex: this.stepCounter++,
+                    name: `${variable} = F`,
+                    type: 'branch',
+                    status: 'branch',
+                    value: false,
+                    assignment: { ...currentAssignment, [variable]: false },
+                    children: [],
+                    stepData: { formula: this.substitute(currentFormula, variable, false) }
+                };
+                currentNode.children.push(falseNode);
+                
+                const resFalse = this.dpll(falseNode.stepData.formula, falseNode.assignment, falseNode);
+                return resFalse;
+            }
+        }
+
+        // Проверка выполнимости
+        function checkSatisfiability(formula, assignment) {
+            for (const clause of formula) {
+                let clauseSatisfied = false;
+                for (const literal of clause) {
+                    const variable = literal.startsWith('!') ? literal.substring(1) : literal;
+                    const isNegated = literal.startsWith('!');
+                    const variableValue = assignment[variable] !== undefined ? assignment[variable] : null;
+                    if (variableValue === null) continue;
+                    
+                    const literalValue = isNegated ? !variableValue : variableValue;
+                    if (literalValue) { clauseSatisfied = true; break; }
+                }
+                if (!clauseSatisfied) return false;
+            }
+            return true;
+        }
+
+        // ==========================================
+        // Визуализация с помощью D3.js
+        // ==========================================
+        let currentZoom = d3.zoomIdentity;
+        let svgGroup, zoomBehavior;
+
+        function renderD3Tree(treeData, solverInstance) {
+            const container = d3.select("#tree-container");
+            container.selectAll("*").remove(); 
+
+            const width = container.node().getBoundingClientRect().width;
+            const height = container.node().getBoundingClientRect().height;
+
+            const svg = container.append("svg")
+                .attr("width", "100%")
+                .attr("height", "100%");
+
+            svgGroup = svg.append("g");
+
+            zoomBehavior = d3.zoom()
+                .scaleExtent([0.1, 3])
+                .on("zoom", (event) => {
+                    svgGroup.attr("transform", event.transform);
+                });
+
+            svg.call(zoomBehavior);
+
+            const root = d3.hierarchy(treeData);
+            const treeLayout = d3.tree().nodeSize([45, 110]); 
+            
+            treeLayout(root);
+
+            const initialX = 100;
+            const initialY = height / 2;
+            svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(initialX, initialY));
+
+            const linkGenerator = d3.linkHorizontal()
+                .x(d => d.y)
+                .y(d => d.x);
+
+            svgGroup.selectAll(".link")
+                .data(root.links())
+                .join("path")
+                .attr("class", "link")
+                .attr("d", linkGenerator)
+                .style("stroke", d => {
+                    if (d.target.data.status === 'success') return "rgba(16, 185, 129, 0.6)"; // Emerald
+                    if (d.target.data.status === 'conflict') return "rgba(244, 63, 94, 0.6)"; // Rose
+                    return "rgba(244, 114, 182, 0.4)"; // Soft pink default
+                });
+
+            const node = svgGroup.selectAll(".node")
+                .data(root.descendants())
+                .join("g")
+                .attr("class", d => `node status-${d.data.status}`)
+                .attr("transform", d => `translate(${d.y},${d.x})`)
+                .on("mouseover", function(event, d) {
+                    showTooltip(event, d.data, solverInstance);
+                    d3.select(this).select("circle")
+                      .transition().duration(200)
+                      .attr("r", 12)
+                      .style("filter", "drop-shadow(0 0 6px rgba(244,114,182,0.6))");
+                })
+                .on("mouseout", function() {
+                    hideTooltip();
+                    d3.select(this).select("circle")
+                      .transition().duration(200)
+                      .attr("r", 8)
+                      .style("filter", "none");
+                });
+
+            node.append("circle").attr("r", 8);
+
+            node.append("text")
+                .attr("dy", d => d.children ? -16 : 4) 
+                .attr("x", d => d.children ? 0 : 16) 
+                .style("text-anchor", d => d.children ? "middle" : "start")
+                // Лимит в 25 символов на имя узла, чтобы граф не ломался при ошибках ввода
+                .text(d => d.data.name.length > 25 ? d.data.name.substring(0, 22) + '...' : d.data.name);
+        }
+
+        const tooltip = d3.select("#tooltip");
+
+        function showTooltip(event, nodeData, solverInstance) {
+            let typeLabel = '';
+            switch(nodeData.type) {
+                case 'root': typeLabel = 'Старт'; break;
+                case 'branch': typeLabel = 'Выбор'; break;
+                case 'unit': typeLabel = 'Единичный литерал'; break;
+                case 'pure': typeLabel = 'Чистый литерал'; break;
+                case 'conflict': typeLabel = 'Тупик'; break;
+                case 'solution': typeLabel = 'Решение'; break;
+            }
+
+            // Обрезаем имя до нормальной длины
+            const safeName = nodeData.name.length > 50 ? nodeData.name.substring(0, 47) + '...' : nodeData.name;
+
+            let html = `<div class="font-bold text-[15px] mb-2 pb-2 border-b border-pink-200 text-fuchsia-900 flex items-center justify-between">
+                            <span>${safeName}</span>
+                            <span class="text-[10px] font-bold px-2 py-1 bg-pink-100 rounded text-pink-600 uppercase tracking-wider ml-3">${typeLabel}</span>
+                        </div>`;
+            
+            if (nodeData.status === 'conflict') {
+                html += `<div class="text-[13px] font-medium text-rose-500 flex items-center gap-2 mb-3"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> Приводит к конфликту</div>`;
+            } else if (nodeData.status === 'success') {
+                html += `<div class="text-[13px] font-medium text-emerald-500 flex items-center gap-2 mb-3"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Решение найдено</div>`;
+            }
+
+            html += `<div class="text-[10px] text-pink-500 mb-1.5 uppercase tracking-widest font-bold">Присваивание:</div>`;
+            html += `<div class="text-[13px] code-font text-fuchsia-800 bg-pink-50/80 p-2.5 rounded-lg mb-3 break-words border border-pink-100">`;
+            html += Object.keys(nodeData.assignment).length > 0 
+                ? Object.keys(nodeData.assignment).sort().map(k => `<span class="text-pink-600">${k}:</span> <span class="${nodeData.assignment[k] ? 'text-emerald-500' : 'text-rose-500'} font-bold">${nodeData.assignment[k] ? 'T' : 'F'}</span>`).join('<span class="mx-2 text-pink-300">|</span>')
+                : '<span class="text-pink-400 italic">Пока пусто</span>';
+            html += `</div>`;
+
+            if (nodeData.stepData && nodeData.stepData.formula) {
+                html += `<div class="text-[10px] text-pink-500 mb-1.5 uppercase tracking-widest font-bold">Оставшаяся формула:</div>`;
+                let formulaStr = solverInstance.formulaToString(nodeData.stepData.formula);
+                html += `<div class="text-[12px] leading-relaxed code-font text-fuchsia-800 bg-pink-50/80 p-2.5 rounded-lg max-h-32 overflow-y-auto border border-pink-100 scrollbar-thin">${formulaStr}</div>`;
+            }
+
+            tooltip.html(html);
+            
+            const tooltipNode = tooltip.node();
+            const tooltipRect = tooltipNode.getBoundingClientRect();
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+
+            let left = event.pageX + 15;
+            let top = event.pageY + 15;
+
+            if (left + tooltipRect.width > windowWidth) left = event.pageX - tooltipRect.width - 15;
+            if (top + tooltipRect.height > windowHeight) top = event.pageY - tooltipRect.height - 15;
+
+            tooltip.style("opacity", 1)
+                   .style("left", left + "px")
+                   .style("top", top + "px");
+        }
+
+        function hideTooltip() {
+            tooltip.style("opacity", 0);
+        }
+
+        // ==========================================
+        // Управление интерфейсом плеера
+        // ==========================================
+        let playerCurrentStep = 0;
+        let playerMaxSteps = 0;
+        let playerInterval = null;
+
+        function updatePlayerUI() {
+            document.getElementById('player-slider').value = playerCurrentStep;
+            document.getElementById('step-counter-text').textContent = `${playerCurrentStep} / ${playerMaxSteps}`;
+            
+            // D3 Visibility updates
+            d3.selectAll('.node')
+                .style('opacity', d => d.data.stepIndex <= playerCurrentStep ? 1 : 0)
+                .style('pointer-events', d => d.data.stepIndex <= playerCurrentStep ? 'auto' : 'none');
+            d3.selectAll('.link')
+                .style('opacity', d => d.target.data.stepIndex <= playerCurrentStep ? 0.65 : 0);
+        }
+
+        function playPause() {
+            const playBtn = document.getElementById('btn-play');
+            if (playerInterval) {
+                clearInterval(playerInterval);
+                playerInterval = null;
+                playBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+            } else {
+                if (playerCurrentStep >= playerMaxSteps) playerCurrentStep = 0;
+                playBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+                
+                playerInterval = setInterval(() => {
+                    playerCurrentStep++;
+                    updatePlayerUI();
+                    if (playerCurrentStep >= playerMaxSteps) {
+                        playPause();
+                    }
+                }, 1000); // 1 секунда
+            }
+        }
+
+        function showError(msg) {
+            const errBox = document.getElementById('error-box');
+            errBox.textContent = msg;
+            errBox.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('error-box').classList.add('hidden');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const formulaInput = document.getElementById('formula');
+            const solveBtn = document.getElementById('solve');
+            const examples = document.querySelectorAll('.example');
+            
+            // 1. Загрузка DIMACS
+            const dimacsInput = document.getElementById('dimacs-upload');
+            document.getElementById('btn-dimacs').addEventListener('click', () => dimacsInput.click());
+            
+            dimacsInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    try {
+                        const parsed = LogicConverter.parseDimacs(evt.target.result);
+                        // Вывод читаемого формата вместо JSON
+                        formulaInput.value = parsed.map(c => '(' + c.join(' | ') + ')').join(' &\n');
+                        hideError();
+                    } catch (err) {
+                        showError("Ошибка чтения DIMACS: " + err.message);
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = ''; // Reset
+            });
+
+            // 2. Преобразование Цейтина
+            document.getElementById('btn-tseitin').addEventListener('click', () => {
+                hideError();
+                const text = formulaInput.value.trim();
+                if (!text) {
+                    showError("Введите логическое выражение, например: (A -> B) <=> C");
+                    return;
+                }
+                try {
+                    const cnf = LogicConverter.convertToCNF(text);
+                    formulaInput.value = cnf.map(c => '(' + c.join(' | ') + ')').join(' &\n');
+                } catch (err) {
+                    showError("Ошибка парсинга выражения: " + err.message);
+                }
+            });
+
+            // Управление плеером
+            document.getElementById('player-slider').addEventListener('input', (e) => {
+                playerCurrentStep = parseInt(e.target.value);
+                updatePlayerUI();
+                if (playerInterval) playPause(); // Pause on manual drag
+            });
+            document.getElementById('btn-prev').addEventListener('click', () => {
+                if (playerCurrentStep > 0) { playerCurrentStep--; updatePlayerUI(); }
+            });
+            document.getElementById('btn-next').addEventListener('click', () => {
+                if (playerCurrentStep < playerMaxSteps) { playerCurrentStep++; updatePlayerUI(); }
+            });
+            document.getElementById('btn-play').addEventListener('click', playPause);
+
+            document.getElementById('zoom-in').addEventListener('click', () => {
+                if(zoomBehavior) d3.select("#tree-container svg").transition().call(zoomBehavior.scaleBy, 1.3);
+            });
+            document.getElementById('zoom-out').addEventListener('click', () => {
+                if(zoomBehavior) d3.select("#tree-container svg").transition().call(zoomBehavior.scaleBy, 0.7);
+            });
+            document.getElementById('zoom-reset').addEventListener('click', () => {
+                if(zoomBehavior) {
+                    const container = d3.select("#tree-container").node();
+                    const h = container.getBoundingClientRect().height;
+                    d3.select("#tree-container svg").transition().duration(750).call(
+                        zoomBehavior.transform, d3.zoomIdentity.translate(100, h / 2).scale(1)
+                    );
+                }
+            });
+
+            // Примеры
+            examples.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    formulaInput.value = this.getAttribute('data-formula');
+                    hideError();
+                });
+            });
+
+            // Кнопка решения - Запуск процесса решения
+            solveBtn.addEventListener('click', () => {
+                hideError();
+                const formulaText = formulaInput.value.trim();
+                
+                if (!formulaText) {
+                    showError("Пожалуйста, введите формулу");
+                    return;
+                }
+
+                try {
+                    const solver = new SATSolver();
+                    const formula = solver.parseFormula(formulaText);
+                    
+                    if (formula.length === 0 && formulaText.length > 0) {
+                        showError("Формула не распознана. Проверьте синтаксис.");
+                        return;
+                    }
+
+                    const startTime = performance.now();
+                    const solution = solver.solve(formula);
+                    const endTime = performance.now();
+                    const solvingTimeMs = (endTime - startTime).toFixed(2);
+
+                    const stats = solver.getStats();
+
+                    // Обновление интерфейса
+                    const db = document.getElementById('stats-dashboard');
+                    db.classList.remove('hidden');
+                    void db.offsetWidth; // Trigger reflow
+                    db.classList.remove('opacity-0');
+
+                    // Показ плеера
+                    playerMaxSteps = stats.maxSteps;
+                    playerCurrentStep = playerMaxSteps;
+                    const slider = document.getElementById('player-slider');
+                    slider.max = playerMaxSteps;
+                    slider.value = playerMaxSteps;
+                    document.getElementById('player-controls').classList.remove('hidden');
+                    if (playerInterval) playPause();
+                    updatePlayerUI();
+
+                    const resEl = document.getElementById('stat-result');
+                    if (solution !== null) {
+                        const verified = checkSatisfiability(formula, solution);
+                        resEl.innerHTML = verified 
+                            ? `<span class="text-emerald-500 font-semibold">ВЫПОЛНИМА (SAT)</span>` 
+                            : `<span class="text-rose-500 font-semibold">ОШИБКА В РЕШЕНИИ</span>`;
+                        
+                        const keys = Object.keys(solution).sort();
+                        if (keys.length > 0) {
+                            let tableHtml = `<table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="border-b border-pink-200 text-pink-500 text-[9px] uppercase tracking-wider">
+                                        <th class="pb-1.5 font-medium">Переменная</th>
+                                        <th class="pb-1.5 font-medium text-right">Значение</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-[11px] code-font">`;
+                            keys.forEach(k => {
+                                tableHtml += `<tr>
+                                    <td class="py-1.5 text-fuchsia-900 border-b border-pink-100/50 last:border-0">${k}</td>
+                                    <td class="py-1.5 text-right border-b border-pink-100/50 last:border-0 ${solution[k] ? 'text-emerald-500 font-bold' : 'text-rose-500 font-bold'}">${solution[k] ? 'True' : 'False'}</td>
+                                </tr>`;
+                            });
+                            tableHtml += `</tbody></table>`;
+                            document.getElementById('final-assignment').innerHTML = tableHtml;
+                        } else {
+                            document.getElementById('final-assignment').innerHTML = '<div class="text-emerald-500 italic text-xs text-center py-1">Истина при любых значениях</div>';
+                        }
+                    } else {
+                        resEl.innerHTML = `<span class="text-rose-500 font-semibold">НЕВЫПОЛНИМА (UNSAT)</span>`;
+                        document.getElementById('final-assignment').innerHTML = `<div class="text-pink-400 italic text-xs text-center py-1">Решений нет</div>`;
+                    }
+
+                   
+                    document.getElementById('stat-nodes').textContent = stats.nodes;
+
+                    // Extract exact tree from Solver and render
+                    const treeData = solver.getTree();
+                    renderD3Tree(treeData, solver);
+
+                } catch (err) {
+                    showError(`Ошибка: ${err.message}`);
+                    console.error(err);
+                }
+            });
+            
+            // Рендер пустого начального инструкционного канваса
+            const container = d3.select("#tree-container");
+            const svg = container.append("svg").attr("width", "100%").attr("height", "100%");
+            svg.append("text")
+                .attr("x", "50%")
+                .attr("y", "50%")
+                .attr("text-anchor", "middle")
+                .attr("fill", "#db2777")
+                .attr("font-size", "14px")
+                .attr("font-weight", "500")
+                .style("font-family", "Inter")
+                .text("Введи формулу и нажми 'Решить'");
         });
-      });
-    });
-  </script>
+    </script>
 </body>
-
 </html>
